@@ -190,6 +190,40 @@ function phaseHint(phase: Phase) {
   return hints[phase];
 }
 
+function clarificationPrompt(phase: Phase) {
+  const prompts: Record<Phase, string> = {
+    ASK_HOBBY: "たとえば「場所（家/外）」「誰といたか」「好きだった遊び」どれか1つだけでも思い出せる？",
+    ASK_EVENT: "大きな事件じゃなくてOK。『やる/やらないで迷った小さい場面』を1つだけで十分。",
+    ASK_CHOICE_A: "まずはAだけ。迷ったら『続ける』『言う』『やってみる』みたいな短語でもOK。",
+    ASK_CHOICE_B: "次にBだけ。Aの反対か、別の案を短く置いてみよう。",
+    ASK_CHOSEN: "決めきれなければ『A寄り』『B寄り』でもOK。どちらに近かった？",
+    ASK_VALUES: "単語1つでOK。例: 安心 / 自由 / 成長 / 仲間",
+    ASK_FEARS: "こちらも単語でOK。例: 失敗 / 嫌われる / 後悔",
+    ASK_LINK: "いまの自分とのつながりを、短い一文で試してみよう。",
+    REVIEW_CARD: "",
+  };
+  return prompts[phase];
+}
+
+function isVagueInput(text: string) {
+  const t = text.trim().toLowerCase();
+  if (!t) return true;
+  if (t.length <= 2) return true;
+  const vagueWords = [
+    "わから",
+    "覚えてない",
+    "覚えていない",
+    "曖昧",
+    "忘れた",
+    "ないかも",
+    "特にない",
+    "うーん",
+    "たぶん",
+    "微妙",
+  ];
+  return vagueWords.some((w) => t.includes(w));
+}
+
 function inferScoresFromDraft(draft: Omit<Card, "chapter">): Scores {
   const totalText =
     `${draft.hobby} ${draft.event} ${draft.optionA} ${draft.optionB} ${draft.values} ${draft.fears} ${draft.linkToNow}`.length;
@@ -254,7 +288,7 @@ export default function Home() {
   const [draft, setDraft] = useState<Omit<Card,"chapter">>(emptyDraft);
   const [cards, setCards] = useState<Card[]>([]);
   const [messages, setMessages] = useState<Msg[]>([
-    { role: "assistant", content: "ここでは、あなたのこれまでを一緒にたどるよ。診断じゃなくて、お話し合いの相手として聞かせて。まずは幼稚園/保育園くらいの頃、何に夢中だった？" },
+    { role: "assistant", content: "ここは、あなたの過去を“診断する場所”ではなく、一緒にたどる対話の場所です。正確じゃなくて大丈夫。曖昧でも、断片でもOK。4つの章を話しながら、最後に『これからの舵』まで一緒に考えよう。まずは幼稚園/保育園くらいの頃、何に夢中だった？" },
   ]);
   const typingTimerRef = useRef<number | null>(null);
 
@@ -335,6 +369,12 @@ export default function Home() {
 
     pushUser(text);
     setChatInput("");
+
+    const allowVeryShort = phase === "ASK_CHOSEN" && /(^|\s|　)[ab]($|\s|　)/i.test(text);
+    if (isVagueInput(text) && !allowVeryShort) {
+      botSay(`曖昧でも大丈夫。ここは正確さより“手触り”を拾う場所にしよう。\n${clarificationPrompt(phase)}`);
+      return;
+    }
 
     if (phase === "ASK_HOBBY") {
       setDraft((d) => ({ ...d, hobby: text }));
@@ -432,14 +472,14 @@ export default function Home() {
   }
 
   return (
-    <main className={`relative min-h-screen overflow-hidden text-white p-6 flex justify-center transition-colors duration-700 ${theme.mainBg}`}>
+    <main className={`relative min-h-screen overflow-hidden text-white p-6 flex justify-center ${theme.mainBg}`}>
       <div className="pointer-events-none absolute inset-0">
         <div className="water-wave-layer water-wave-a" />
         <div className="water-wave-layer water-wave-b" />
         <div className="water-caustics" />
-        <div className={`absolute -top-16 -left-12 h-72 w-72 rounded-full blur-3xl transition-colors duration-700 ${theme.glowA}`} />
-        <div className={`absolute top-1/3 right-0 h-80 w-80 rounded-full blur-3xl transition-colors duration-700 ${theme.glowB}`} />
-        <div className={`absolute bottom-0 left-1/4 h-64 w-96 rounded-full blur-3xl transition-colors duration-700 ${theme.glowC}`} />
+        <div className={`absolute -top-16 -left-12 h-72 w-72 rounded-full blur-3xl ${theme.glowA}`} />
+        <div className={`absolute top-1/3 right-0 h-80 w-80 rounded-full blur-3xl ${theme.glowB}`} />
+        <div className={`absolute bottom-0 left-1/4 h-64 w-96 rounded-full blur-3xl ${theme.glowC}`} />
         <div className={`absolute inset-x-0 top-24 h-px bg-gradient-to-r from-transparent to-transparent ${theme.lineA}`} />
         <div className={`absolute inset-x-0 top-48 h-px bg-gradient-to-r from-transparent to-transparent ${theme.lineB}`} />
         <div className={`absolute inset-x-0 bottom-28 h-px bg-gradient-to-r from-transparent to-transparent ${theme.lineC}`} />
@@ -447,7 +487,7 @@ export default function Home() {
 
       <div className="relative z-10 w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* 左：チャット（投影向けで大きく） */}
-        <section className={`border rounded-2xl p-4 backdrop-blur-md transition-colors duration-700 ${theme.panel} ${theme.panelShadow}`}>
+        <section className={`border rounded-2xl p-4 backdrop-blur-md ${theme.panel} ${theme.panelShadow}`}>
           <div className="text-sm opacity-70 mb-2">Story AI Proto（対話モード）</div>
           <div className="text-lg font-bold mb-2">いま：{chapter}（会話 {phaseProgress(phase)}/5）</div>
 
@@ -501,9 +541,15 @@ export default function Home() {
         </section>
 
         {/* 右：入力UI（章ステップに応じて出す） */}
-        <section className={`border rounded-2xl p-4 backdrop-blur-md transition-colors duration-700 ${theme.panel} ${theme.inputPanelShadow}`}>
+        <section className={`border rounded-2xl p-4 backdrop-blur-md ${theme.panel} ${theme.inputPanelShadow}`}>
           {cards.length < 4 ? (
             <>
+              <div className="mb-3 rounded-xl border border-white/15 bg-black/20 p-3">
+                <div className="text-xs tracking-[0.1em] text-white/60 mb-1">この対話の進め方</div>
+                <div className="text-sm text-white/80">
+                  正解探しは不要です。曖昧でもOK。話した内容をAIが下書き化して、最後にあなたと一緒に確認します。
+                </div>
+              </div>
               <div className="text-lg font-bold mb-1">話してみる</div>
               <div className="text-sm text-white/65 mb-3">{phaseHint(phase)}</div>
 
@@ -768,6 +814,11 @@ export default function Home() {
 
 function Result({ cards, summary }: { cards: Card[]; summary: { s: Scores; t: { first: string; second: string } } | null }) {
   const [animateIn, setAnimateIn] = useState(false);
+  const [reflection, setReflection] = useState({
+    keep: "",
+    release: "",
+    nextStep: "",
+  });
 
   useEffect(() => {
     const id = requestAnimationFrame(() => setAnimateIn(true));
@@ -874,6 +925,42 @@ function Result({ cards, summary }: { cards: Card[]; summary: { s: Scores; t: { 
 
         <div className="mt-4 text-base font-bold text-cyan-50">
           「この先は、川で“あなたの舵”を握る番です。」
+        </div>
+      </div>
+
+      <div className={`relative z-10 border border-white/15 rounded-2xl p-3 bg-black/20 mt-4 transition-all duration-700 delay-200 ${animateIn ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"}`}>
+        <div className="font-bold mb-2">最後の対話（ここから先を決める）</div>
+        <div className="text-sm text-white/75 mb-3">
+          タイプはラベルでしかありません。ここで「続けるもの / 手放すもの / 次の一歩」を言葉にして終えよう。
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs text-white/60 mb-1">これからも続けたい自分の選び方</label>
+            <input
+              className="w-full rounded-xl px-3 py-2 bg-white/10 text-white placeholder:text-white/40 border border-white/20 focus:outline-none focus:ring-2 focus:ring-cyan-300/60"
+              value={reflection.keep}
+              onChange={(e) => setReflection((r) => ({ ...r, keep: e.target.value }))}
+              placeholder="例：迷っても一度は自分で選んでみる"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-white/60 mb-1">手放したい反応・思い込み</label>
+            <input
+              className="w-full rounded-xl px-3 py-2 bg-white/10 text-white placeholder:text-white/40 border border-white/20 focus:outline-none focus:ring-2 focus:ring-cyan-300/60"
+              value={reflection.release}
+              onChange={(e) => setReflection((r) => ({ ...r, release: e.target.value }))}
+              placeholder="例：嫌われるかもで止まってしまう癖"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-white/60 mb-1">48時間以内にやる小さな一歩</label>
+            <input
+              className="w-full rounded-xl px-3 py-2 bg-white/10 text-white placeholder:text-white/40 border border-white/20 focus:outline-none focus:ring-2 focus:ring-cyan-300/60"
+              value={reflection.nextStep}
+              onChange={(e) => setReflection((r) => ({ ...r, nextStep: e.target.value }))}
+              placeholder="例：気になっていた人に連絡を1通送る"
+            />
+          </div>
         </div>
       </div>
     </div>
